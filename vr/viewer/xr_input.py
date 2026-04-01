@@ -267,6 +267,58 @@ class XRInput:
                 ),
             ),
         )
+        # Bindings for Meta Quest Touch Controller (Quest 2/3/Pro)
+        # Note: Oculus Touch has no trigger/click, left hand has x/y instead of a/b
+        meta_touch_x_click_path = xr.string_to_path(
+            self._context.instance, "/user/hand/left/input/x/click"
+        )
+        meta_touch_y_click_path = xr.string_to_path(
+            self._context.instance, "/user/hand/left/input/y/click"
+        )
+        meta_touch_bindings = [
+            xr.ActionSuggestedBinding(self.action_pose, pose_path[Side.LEFT]),
+            xr.ActionSuggestedBinding(self.action_pose, pose_path[Side.RIGHT]),
+            xr.ActionSuggestedBinding(self.action_pose_aim, pose_aim_path[Side.LEFT]),
+            xr.ActionSuggestedBinding(self.action_pose_aim, pose_aim_path[Side.RIGHT]),
+            xr.ActionSuggestedBinding(self.action_vibrate, haptic_path[Side.LEFT]),
+            xr.ActionSuggestedBinding(self.action_vibrate, haptic_path[Side.RIGHT]),
+            xr.ActionSuggestedBinding(
+                self.action_trigger_value, trigger_value_path[Side.LEFT]
+            ),
+            xr.ActionSuggestedBinding(
+                self.action_trigger_value, trigger_value_path[Side.RIGHT]
+            ),
+            # Left hand: x->a, y->b; Right hand: a, b
+            xr.ActionSuggestedBinding(self.action_a, meta_touch_x_click_path),
+            xr.ActionSuggestedBinding(self.action_a, a_click_path[Side.RIGHT]),
+            xr.ActionSuggestedBinding(self.action_b, meta_touch_y_click_path),
+            xr.ActionSuggestedBinding(self.action_b, b_click_path[Side.RIGHT]),
+            xr.ActionSuggestedBinding(
+                self.action_thumbstick_x, thumbstick_x_path[Side.LEFT]
+            ),
+            xr.ActionSuggestedBinding(
+                self.action_thumbstick_x, thumbstick_x_path[Side.RIGHT]
+            ),
+            xr.ActionSuggestedBinding(
+                self.action_thumbstick_y, thumbstick_y_path[Side.LEFT]
+            ),
+            xr.ActionSuggestedBinding(
+                self.action_thumbstick_y, thumbstick_y_path[Side.RIGHT]
+            ),
+        ]
+        xr.suggest_interaction_profile_bindings(
+            instance=self._context.instance,
+            suggested_bindings=xr.InteractionProfileSuggestedBinding(
+                interaction_profile=xr.string_to_path(
+                    self._context.instance,
+                    "/interaction_profiles/oculus/touch_controller",
+                ),
+                count_suggested_bindings=len(meta_touch_bindings),
+                suggested_bindings=(
+                    xr.ActionSuggestedBinding * len(meta_touch_bindings)
+                )(*meta_touch_bindings),
+            ),
+        )
 
         self.grip_spaces: dict[int, xr.Space] = {
             Side.LEFT: xr.create_action_space(
