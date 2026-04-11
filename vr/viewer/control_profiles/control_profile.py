@@ -9,8 +9,9 @@ from xr import Posef
 from bigym.bigym_env import BiGymEnv
 from vr.viewer import Side
 from vr.viewer.pyopenxr_to_mujoco_converter import (
+    apply_space_offset_to_pose,
+    pyquaternion_from_pyopenxr,
     vector_from_pyopenxr,
-    quaternion_from_pyopenxr,
 )
 from vr.viewer.xr_context import XRContextObject
 
@@ -43,13 +44,18 @@ class ControlProfile(ABC):
         """Custom reset behaviour, called on environment reset."""
         pass
 
+    def get_reset_space_offset(self, context: XRContextObject) -> Posef:
+        """Get a calibration transform to apply after an environment reset."""
+        return Posef()
+
     @staticmethod
     def _get_controller_pose(
         context: XRContextObject, side: Side, offset: Posef
     ) -> tuple[np.ndarray, Quaternion]:
         pose = context.input.state[side].pose_aim
-        pos = vector_from_pyopenxr(pose.position) + offset.position.as_numpy()
-        quat = Quaternion(quaternion_from_pyopenxr(pose.orientation))
+        pos = vector_from_pyopenxr(pose.position)
+        quat = pyquaternion_from_pyopenxr(pose.orientation)
+        pos, quat = apply_space_offset_to_pose(pos, quat, offset)
         return pos, quat
 
     @staticmethod
@@ -57,7 +63,8 @@ class ControlProfile(ABC):
         context: XRContextObject, offset: Posef, pivot_offset: np.ndarray = np.zeros(3)
     ) -> tuple[np.ndarray, Quaternion]:
         pose = context.input.hmd_pose
-        quat = Quaternion(quaternion_from_pyopenxr(pose.orientation))
-        pos = vector_from_pyopenxr(pose.position) + offset.position.as_numpy()
+        pos = vector_from_pyopenxr(pose.position)
+        quat = pyquaternion_from_pyopenxr(pose.orientation)
+        pos, quat = apply_space_offset_to_pose(pos, quat, offset)
         pos += quat.rotate(pivot_offset)
         return pos, quat

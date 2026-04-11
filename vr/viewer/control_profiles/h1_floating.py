@@ -9,6 +9,10 @@ from bigym.bigym_env import BiGymEnv
 from vr.ik.h1_upper_body_ik import H1UpperBodyIK, Pose
 from vr.viewer import Side
 from vr.viewer.control_profiles.control_profile import ControlProfile
+from vr.viewer.pyopenxr_to_mujoco_converter import (
+    pyquaternion_from_pyopenxr,
+    vector_from_pyopenxr,
+)
 from vr.viewer.xr_context import XRContextObject
 
 
@@ -34,6 +38,40 @@ class H1Floating(ControlProfile):
         self._sync_position = True
         self._sync_rotation = True
         self._ik = H1UpperBodyIK(env)
+
+    def get_reset_space_offset(self, context: XRContextObject) -> Posef:
+        """Recenter the VR space so the current headset pose becomes the reset zero."""
+        pelvis = self._env.robot.pelvis
+        pelvis_position = np.array(pelvis.get_position())
+        pelvis_quaternion = Quaternion(pelvis.get_quaternion())
+        pelvis_yaw = pelvis_quaternion.yaw_pitch_roll[0]
+
+        raw_hmd_pose = context.input.hmd_pose
+        raw_hmd_position = vector_from_pyopenxr(raw_hmd_pose.position)
+        raw_hmd_quaternion = pyquaternion_from_pyopenxr(raw_hmd_pose.orientation)
+        raw_hmd_yaw = raw_hmd_quaternion.yaw_pitch_roll[0]
+
+        desired_hmd_quaternion = Quaternion(axis=[0, 0, 1], angle=pelvis_yaw - np.pi / 2)
+        calibration_quaternion = desired_hmd_quaternion * Quaternion(
+            axis=[0, 0, 1], angle=-raw_hmd_yaw
+        )
+
+        target_hmd_position = (
+            pelvis_position
+            + np.array([0, 0, self.HMD_TO_PELVIS_OFFSET])
+            - desired_hmd_quaternion.rotate(self.HMD_PIVOT_OFFSET)
+        )
+        calibration_position = (
+            target_hmd_position - calibration_quaternion.rotate(raw_hmd_position)
+        )
+
+        offset = Posef()
+        offset.position.x, offset.position.y, offset.position.z = calibration_position
+        offset.orientation.x = calibration_quaternion.x
+        offset.orientation.y = calibration_quaternion.y
+        offset.orientation.z = calibration_quaternion.z
+        offset.orientation.w = calibration_quaternion.w
+        return offset
 
     def get_next_action(
         self, context: XRContextObject, steps_count: int, space_offset: Posef

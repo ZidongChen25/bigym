@@ -31,11 +31,38 @@ def quaternion_from_pyopenxr(xr_quaternion: Quaternionf) -> np.ndarray:
     return xr_quaternion.elements
 
 
+def pyquaternion_from_pyopenxr(xr_quaternion: Quaternionf) -> Quaternion:
+    """Convert pyopenxr quaternion to a pyquaternion in mujoco space."""
+    return Quaternion(quaternion_from_pyopenxr(xr_quaternion))
+
+
+def pyquaternion_from_space_offset(offset: xr.Posef) -> Quaternion:
+    """Get the calibration quaternion stored in a Posef offset."""
+    orientation = offset.orientation
+    return Quaternion(orientation.w, orientation.x, orientation.y, orientation.z)
+
+
+def apply_space_offset_to_pose(
+    position: np.ndarray, orientation: Quaternion, offset: xr.Posef
+) -> tuple[np.ndarray, Quaternion]:
+    """Apply the VR calibration transform to a pose in mujoco space."""
+    offset_quaternion = pyquaternion_from_space_offset(offset)
+    calibrated_position = offset_quaternion.rotate(position) + offset.position.as_numpy()
+    calibrated_orientation = offset_quaternion * orientation
+    return calibrated_position, calibrated_orientation
+
+
+def camera_axes_from_quaternion(
+    quaternion: Quaternion,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Get mujoco forward and up axes for a camera orientation."""
+    forward = quaternion.rotate(np.array([0, 1, 0]))
+    up = quaternion.rotate(np.array([0, 0, 1]))
+    return np.array(forward), np.array(up)
+
+
 def camera_axes_from_pyopenxr(
     xr_quaternion: Quaternionf,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Convert pyopenxr quaternion to mujoco forward and up axes."""
-    orientation = xr.Matrix4x4f.create_from_quaternion(xr_quaternion).as_numpy()
-    forward = vector_from_pyopenxr(orientation[8:11])
-    up = vector_from_pyopenxr(orientation[4:7])
-    return forward, up
+    return camera_axes_from_quaternion(pyquaternion_from_pyopenxr(xr_quaternion))

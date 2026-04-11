@@ -69,7 +69,9 @@ class Countdown:
 class VRViewer:
     """Renders a Mujoco environment to a VR headset using pyopenxr."""
 
-    STEPS_COUNT_FACTOR = 3
+    # Keep the VR loop conservative on Linux/WiVRn setups to avoid overscheduling
+    # MuJoCo stepping relative to headset refresh.
+    STEPS_COUNT_FACTOR = 1
 
     OFFSET_THRESHOLD = 0.1
     OFFSET_DELTA = 0.01
@@ -217,6 +219,7 @@ class VRViewer:
         self._space_offset = Posef()
         self._stop_countdown = None
         self._env.reset()
+        self._space_offset = self._control_profile.get_reset_space_offset(self._context)
         self._control_profile.reset()
         self._demo_recorder.record(self._env, lightweight_demo=True)
         self._controller_left.vibrate()

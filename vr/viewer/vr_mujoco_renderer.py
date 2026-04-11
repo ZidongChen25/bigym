@@ -3,13 +3,17 @@ from typing import Optional, Any
 
 import mujoco
 import numpy as np
-import xr
 from mojo import Mojo
-from xr import FrameState, View, Posef, Quaternionf, Vector3f
+from xr import FrameState, View, Posef
 
 from vr.viewer import Side
 from vr.viewer.full_screen_renderer import VRFullScreenRenderer
-from vr.viewer.pyopenxr_to_mujoco_converter import vector_from_pyopenxr
+from vr.viewer.pyopenxr_to_mujoco_converter import (
+    apply_space_offset_to_pose,
+    camera_axes_from_quaternion,
+    pyquaternion_from_pyopenxr,
+    vector_from_pyopenxr,
+)
 from vr.viewer.xr_context import XRContextObject
 
 RENDER_REFLECTIONS = False
@@ -120,23 +124,14 @@ class VRMujocoRenderer:
             camera.frustum_near = z_near
             camera.frustum_far = z_far
 
-            # Column-major view matrix
-            orientation = xr.Matrix4x4f.create_from_quaternion(view.pose.orientation)
-            if offset.orientation != Quaternionf():
-                orientation_offset = xr.Matrix4x4f.create_from_quaternion(
-                    offset.orientation
-                )
-                orientation = orientation.multiply(orientation_offset)
-            orientation = orientation.as_numpy()
-            # Forward is the 3rd column of the view matrix - elements [8], [9], [10]
-            # Up is the 2nd column of the view matrix - elements [4], [6], [5]
-            # Also we have to invert forward axis, according to the documentation:
-            # https://mujoco.readthedocs.io/en/stable/programming/visualization.html
-            camera.forward = -vector_from_pyopenxr(orientation[8:11])
-            camera.up = vector_from_pyopenxr(orientation[4:7])
-            camera.pos = vector_from_pyopenxr(view.pose.position)
-            if offset.position != Vector3f():
-                camera.pos += offset.position.as_numpy()
+            camera.pos, camera_orientation = apply_space_offset_to_pose(
+                vector_from_pyopenxr(view.pose.position),
+                pyquaternion_from_pyopenxr(view.pose.orientation),
+                offset,
+            )
+            camera.forward, camera.up = camera_axes_from_quaternion(
+                camera_orientation
+            )
 
     def _add_marker_to_scene(self, marker: dict):
         if self._scene.ngeom >= self._scene.maxgeom:

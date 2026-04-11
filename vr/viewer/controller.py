@@ -11,8 +11,9 @@ from pyquaternion import Quaternion
 from xr import Posef
 
 from vr.viewer.pyopenxr_to_mujoco_converter import (
+    apply_space_offset_to_pose,
     vector_from_pyopenxr,
-    quaternion_from_pyopenxr,
+    pyquaternion_from_pyopenxr,
 )
 from vr.viewer import Side
 
@@ -94,10 +95,13 @@ class Controller:
         )
         if state.is_active:
             pose = state.pose
-            self._controller.set_position(
-                vector_from_pyopenxr(pose.position) + space_offset.position.as_numpy()
+            position, orientation = apply_space_offset_to_pose(
+                vector_from_pyopenxr(pose.position),
+                pyquaternion_from_pyopenxr(pose.orientation),
+                space_offset,
             )
-            self._controller.set_quaternion(quaternion_from_pyopenxr(pose.orientation))
+            self._controller.set_position(position)
+            self._controller.set_quaternion(orientation.elements)
         else:
             self._controller.set_position(CONTROLLER_NOT_ACTIVE_POSITION)
             self._controller.set_quaternion(CONTROLLER_NOT_ACTIVE_ROTATION)
