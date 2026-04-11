@@ -20,6 +20,7 @@ from demonstrations.demo import TERMINATION_STEPS
 from demonstrations.demo_recorder import DemoRecorder
 from vr.viewer.control_profiles.control_profile import ControlProfile
 from vr.viewer.controller import Controller
+from vr.viewer.diagnostics import log_stage
 from vr.viewer import Side
 from vr.viewer.vr_mujoco_renderer import VRMujocoRenderer
 from vr.viewer.xr_context import XRContextObject
@@ -93,6 +94,7 @@ class VRViewer:
             - Native resolution of the Valve Index is 1440x1600 per eye,
               using reduced 900:1000 resolution by default to improve performance.
         """
+        log_stage(f"vr_viewer.__init__ start env_cls={env_cls.__name__} resolution={resolution.name}")
         self._width = resolution.value[0] * 2
         self._height = resolution.value[1]
 
@@ -103,15 +105,19 @@ class VRViewer:
         self._controller_right: Optional[Controller] = None
 
         vr_env_cls = self._vr_env(env_cls)
+        log_stage(f"vr_viewer.vr_env_cls ready name={vr_env_cls.__name__}")
         self._env = vr_env_cls(
             render_mode="rgb_array", action_mode=action_mode, robot_cls=robot_cls
         )
+        log_stage("vr_viewer.env constructed")
         self._env.mojo.model.vis.global_.offwidth = self._width
         self._env.mojo.model.vis.global_.offheight = self._height
         self._env.reset()
+        log_stage("vr_viewer.env reset complete")
 
         self._control_profile = control_profile_cls(self._env)
         self._renderer = VRMujocoRenderer(self._env.mojo, self._height, self._width)
+        log_stage("vr_viewer.renderer constructed")
 
         self._context: Optional[XRContextObject] = None
         self._space_offset = Posef()
@@ -158,6 +164,8 @@ class VRViewer:
         on_running_event: Optional[EventType] = threading.Event(),
     ):
         """Start VR viewer."""
+        log_stage("vr_viewer.run start")
+        first_frame_logged = False
         with XRContextObject(
             instance_create_info=xr.InstanceCreateInfo(
                 enabled_extension_names=[
@@ -165,11 +173,20 @@ class VRViewer:
                 ],
             ),
         ) as self._context:
+            log_stage("vr_viewer.xr_context entered")
             on_running_event.set()
+            log_stage("vr_viewer.on_running_event set")
             self._renderer.set_context(self._context)
+            log_stage("vr_viewer.renderer context set")
             self._controller_left.set_context(self._context)
             self._controller_right.set_context(self._context)
+            log_stage("vr_viewer.controller contexts set")
             for frame_state in self._context.frame_loop():
+                if not first_frame_logged:
+                    log_stage(
+                        f"vr_viewer.first_frame predicted_display_period={frame_state.predicted_display_period}"
+                    )
+                    first_frame_logged = True
                 self._handle_input(self._context)
                 steps_count = self._predict_steps_count(frame_state)
                 action = self._get_action(steps_count)
@@ -183,7 +200,9 @@ class VRViewer:
                         self._stop_countdown = Countdown(TERMINATION_STEPS)
                 self._render_frame(frame_state)
                 if exit_event.is_set():
+                    log_stage("vr_viewer.exit_event observed")
                     break
+        log_stage("vr_viewer.run exit")
 
     def _get_action(self, steps_count: int) -> np.ndarray:
         action = self._control_profile.get_next_action(

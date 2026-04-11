@@ -7,6 +7,7 @@ from mojo import Mojo
 from xr import FrameState, View, Posef
 
 from vr.viewer import Side
+from vr.viewer.diagnostics import log_stage
 from vr.viewer.full_screen_renderer import VRFullScreenRenderer
 from vr.viewer.pyopenxr_to_mujoco_converter import (
     apply_space_offset_to_pose,
@@ -74,6 +75,7 @@ class VRMujocoRenderer:
         """Set context of VR application."""
         self._context = context
         self._headset_renderer = VRFullScreenRenderer(self._width // 2, self._height)
+        log_stage("vr_mujoco_renderer.set_context complete")
 
     def show_stats(
         self,

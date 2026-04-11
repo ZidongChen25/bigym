@@ -12,6 +12,7 @@ from xr import (
     FormFactor,
 )
 
+from vr.viewer.diagnostics import log_stage
 from vr.viewer.xr_input import XRInput
 
 ALWAYS_DESTROY_INSTANCE_ON_EXIT = True
@@ -48,8 +49,11 @@ class XRContextObject(xr.ContextObject):
 
     def __enter__(self):
         """Initializes XRInput upon entering the context."""
+        log_stage("xr_context.__enter__ before super")
         enter_result = super().__enter__()
+        log_stage("xr_context.__enter__ after super")
         self.input = XRInput(self)
+        log_stage("xr_context.__enter__ xr_input ready")
         return enter_result
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -57,6 +61,9 @@ class XRContextObject(xr.ContextObject):
 
         Contains fix to prevent application hang on Linux: https://github.com/ValveSoftware/SteamVR-for-Linux/issues/422.
         """
+        log_stage(
+            f"xr_context.__exit__ exc_type={getattr(exc_type, '__name__', None)}"
+        )
         if self.default_action_set is not None:
             xr.destroy_action_set(self.default_action_set)
             self.default_action_set = None
@@ -74,6 +81,7 @@ class XRContextObject(xr.ContextObject):
             if ALWAYS_DESTROY_INSTANCE_ON_EXIT or platform.system() != "Linux":
                 xr.destroy_instance(self.instance)
             self.instance = None
+        log_stage("xr_context.__exit__ complete")
 
     def frame_loop(self):
         """Runs the frame loop and updates XR input."""

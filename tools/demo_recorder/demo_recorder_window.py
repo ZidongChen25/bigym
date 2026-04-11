@@ -1,4 +1,6 @@
 """VR Demo Recorder Window."""
+from __future__ import annotations
+
 import multiprocessing
 import time
 import traceback
@@ -21,6 +23,7 @@ from tools.shared.utils import (
     CONTROL_PROFILES,
 )
 from vr.viewer.control_profiles.control_profile import ControlProfile
+from vr.viewer.diagnostics import log_stage
 from vr.viewer.vr_viewer import VRViewer
 
 
@@ -28,11 +31,12 @@ class DemoRecorder:
     """Demo Recorder."""
 
     _VIEWER_PROCESS_TERMINATION_DELAY = 2
+    _MP_CONTEXT = multiprocessing.get_context("spawn")
 
     def __init__(self, target_dir: Path):
         """Init."""
         self._target_dir = target_dir
-        self._exit_event: Optional[multiprocessing.Event] = None
+        self._exit_event: Optional[multiprocessing.synchronize.Event] = None
         self._viewer_process: Optional[multiprocessing.Process] = None
 
         self._env_cls: Optional[Type[BiGymEnv]] = None
@@ -103,6 +107,7 @@ class DemoRecorder:
 
     def start_viewer(self, on_started: Optional[Callable] = None) -> bool:
         """Launch VR viewer."""
+        log_stage("demo_recorder.start_viewer called")
         if self._viewer_process:
             warnings.warn("Another instance of VRViewer is already running.")
             return False
@@ -116,34 +121,38 @@ class DemoRecorder:
             warnings.warn("Control profile is not ste.")
             return False
 
-        self._exit_event = multiprocessing.Event()
-        launched_event = multiprocessing.Event()
-        error_event = multiprocessing.Event()
-        self._viewer_process = multiprocessing.Process(
+        self._exit_event = self._MP_CONTEXT.Event()
+        launched_event = self._MP_CONTEXT.Event()
+        error_event = self._MP_CONTEXT.Event()
+        self._viewer_process = self._MP_CONTEXT.Process(
             target=self._run_vr_viewer,
             args=(self._exit_event, launched_event, error_event),
         )
         self._viewer_process.start()
+        log_stage(f"demo_recorder.viewer_process started pid={self._viewer_process.pid}")
 
         # Wait for the viewer to launch/crash
         while True:
             if launched_event.is_set():
+                log_stage("demo_recorder.launched_event set")
                 if on_started:
                     on_started()
                 return True
             if error_event.is_set():
+                log_stage("demo_recorder.error_event set")
                 self._viewer_process.kill()
                 self._viewer_process = None
                 return False
-            multiprocessing.Event().wait(0.1)
+            self._MP_CONTEXT.Event().wait(0.1)
 
     def _run_vr_viewer(
         self,
-        exit_event: multiprocessing.Event,
-        running_event: multiprocessing.Event,
-        error_event: multiprocessing.Event,
+        exit_event: multiprocessing.synchronize.Event,
+        running_event: multiprocessing.synchronize.Event,
+        error_event: multiprocessing.synchronize.Event,
     ):
         try:
+            log_stage("demo_recorder._run_vr_viewer entered")
             viewer = VRViewer(
                 env_cls=self._env_cls,
                 action_mode=JointPositionActionMode(
@@ -155,8 +164,11 @@ class DemoRecorder:
                 demo_directory=self._target_dir,
                 robot_cls=self._robot_cls,
             )
+            log_stage("demo_recorder.VRViewer constructed")
             viewer.run(exit_event, running_event)
+            log_stage("demo_recorder.VRViewer.run returned")
         except Exception as e:
+            log_stage(f"demo_recorder._run_vr_viewer exception: {type(e).__name__}: {e}")
             print(f"Exception while running VR: {e}")
             traceback.print_exc()
             error_event.set()
