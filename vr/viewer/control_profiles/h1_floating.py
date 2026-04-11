@@ -1,11 +1,13 @@
 """Control profile to for H1 in floating mode."""
 
+import mujoco
 import numpy as np
 from gymnasium.core import ActType
 from pyquaternion import Quaternion
 from xr import Posef
 
 from bigym.bigym_env import BiGymEnv
+from bigym.const import HandSide
 from vr.ik.h1_upper_body_ik import H1UpperBodyIK, Pose
 from vr.viewer import Side
 from vr.viewer.control_profiles.control_profile import ControlProfile
@@ -38,6 +40,13 @@ class H1Floating(ControlProfile):
         self._sync_position = True
         self._sync_rotation = True
         self._ik = H1UpperBodyIK(env)
+        self._controller_reset_poses: dict[Side, Pose | None] = {
+            Side.LEFT: None,
+            Side.RIGHT: None,
+        }
+        self._wrist_reset_poses: dict[Side, Pose] = {
+            side: self._get_wrist_pose(self._hand_side(side)) for side in Side
+        }
 
     def get_reset_space_offset(self, context: XRContextObject) -> Posef:
         """Recenter the VR space so the current headset pose becomes the reset zero."""
@@ -80,8 +89,12 @@ class H1Floating(ControlProfile):
         trigger_left = context.input.state[Side.LEFT].trigger_value
         trigger_right = context.input.state[Side.RIGHT].trigger_value
 
-        l_pos, l_quat = self._get_controller_pose(context, Side.LEFT, space_offset)
-        r_pos, r_quat = self._get_controller_pose(context, Side.RIGHT, space_offset)
+        left_target_pose = self._get_arm_target_pose(
+            context, Side.LEFT, space_offset
+        )
+        right_target_pose = self._get_arm_target_pose(
+            context, Side.RIGHT, space_offset
+        )
         hmd_pos, hmd_quat = self._get_hmd_pose(
             context, space_offset, self.HMD_PIVOT_OFFSET
         )
@@ -133,8 +146,8 @@ class H1Floating(ControlProfile):
             pelvis_pose=pelvis_pose,
             qpos_arm_left=qpos_arm_left,
             qpos_arm_right=qpos_arm_right,
-            target_pose_left=Pose(l_pos, l_quat),
-            target_pose_right=Pose(r_pos, r_quat),
+            target_pose_left=left_target_pose,
+            target_pose_right=right_target_pose,
         )
         control[start_index:end_index] = solution
 
@@ -143,3 +156,52 @@ class H1Floating(ControlProfile):
         control[-1] = np.clip(np.round(trigger_right), 0, 1)
 
         return control
+
+    def reset(
+        self,
+        context: XRContextObject | None = None,
+        space_offset: Posef | None = None,
+    ):
+        """Capture arm reset anchors so controller motion is relative after reset."""
+        self._controller_reset_poses = {Side.LEFT: None, Side.RIGHT: None}
+        self._wrist_reset_poses = {
+            side: self._get_wrist_pose(self._hand_side(side)) for side in Side
+        }
+        if context is None or space_offset is None:
+            return
+        for side in Side:
+            if not context.input.state[side].is_active:
+                continue
+            pos, quat = self._get_controller_pose(context, side, space_offset)
+            self._controller_reset_poses[side] = Pose(pos.copy(), quat)
+
+    def _get_arm_target_pose(
+        self, context: XRContextObject, side: Side, space_offset: Posef
+    ) -> Pose:
+        controller_pos, controller_quat = self._get_controller_pose(
+            context, side, space_offset
+        )
+        controller_anchor = self._controller_reset_poses[side]
+        wrist_anchor = self._wrist_reset_poses[side]
+        if not context.input.state[side].is_active or controller_anchor is None:
+            return Pose(controller_pos, controller_quat)
+
+        delta_position = controller_pos - controller_anchor.position
+        delta_quaternion = (
+            controller_quat * controller_anchor.orientation.inverse
+        )
+        target_position = wrist_anchor.position + delta_position
+        target_quaternion = delta_quaternion * wrist_anchor.orientation
+        return Pose(target_position, target_quaternion)
+
+    def _get_wrist_pose(self, side: HandSide) -> Pose:
+        wrist_site = self._env.robot.grippers[side].wrist_site
+        wrist_position = wrist_site.get_position()
+        bound_wrist_site = self._env.mojo.physics.bind(wrist_site.mjcf)
+        quat = np.zeros(4)
+        mujoco.mju_mat2Quat(quat, bound_wrist_site.xmat)
+        return Pose(wrist_position, Quaternion(quat))
+
+    @staticmethod
+    def _hand_side(side: Side) -> HandSide:
+        return HandSide.LEFT if side == Side.LEFT else HandSide.RIGHT

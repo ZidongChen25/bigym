@@ -1,5 +1,6 @@
 """Abstract base class for defining control profiles."""
 from abc import ABC, abstractmethod
+from typing import Optional
 
 import numpy as np
 from gymnasium.core import ActType
@@ -40,7 +41,11 @@ class ControlProfile(ABC):
         """
         pass
 
-    def reset(self):
+    def reset(
+        self,
+        context: Optional[XRContextObject] = None,
+        space_offset: Optional[Posef] = None,
+    ):
         """Custom reset behaviour, called on environment reset."""
         pass
 

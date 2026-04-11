@@ -407,3 +407,4 @@ python tools/demo_player/main.py
 - Flathub 安装文档: https://docs.flathub.org/docs/for-users/installation
 
 </details>
+  sudo journalctl -k -b -1 --no-pager | rg -n "NVRM|Xid|nvidia|drm|watchdog|panic|BUG:|lockup|gpu"

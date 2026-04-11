@@ -220,7 +220,7 @@ class VRViewer:
         self._stop_countdown = None
         self._env.reset()
         self._space_offset = self._control_profile.get_reset_space_offset(self._context)
-        self._control_profile.reset()
+        self._control_profile.reset(self._context, self._space_offset)
         self._demo_recorder.record(self._env, lightweight_demo=True)
         self._controller_left.vibrate()
 
