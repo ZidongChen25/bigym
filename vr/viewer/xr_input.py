@@ -504,13 +504,19 @@ class XRInput:
             duration=xr.MIN_HAPTIC_DURATION,
             frequency=xr.FREQUENCY_UNSPECIFIED,
         )
-        xr.apply_haptic_feedback(
-            session=self._context.session,
-            haptic_action_info=xr.HapticActionInfo(
-                action=action,
-                subaction_path=self.hand_subaction_paths[hand],
-            ),
-            haptic_feedback=ctypes.cast(
-                byref(vibration), POINTER(xr.HapticBaseHeader)
-            ).contents,
-        )
+        try:
+            xr.apply_haptic_feedback(
+                session=self._context.session,
+                haptic_action_info=xr.HapticActionInfo(
+                    action=action,
+                    subaction_path=self.hand_subaction_paths[hand],
+                ),
+                haptic_feedback=ctypes.cast(
+                    byref(vibration), POINTER(xr.HapticBaseHeader)
+                ).contents,
+            )
+        except xr.exception.SessionNotFocused:
+            # Losing focus temporarily is expected on WiVRn/Monado when the
+            # headset leaves the foreground. Missing a haptic pulse should not
+            # abort the whole viewer.
+            pass
